@@ -1,0 +1,6 @@
+image:
+  repository: rituraj4164/cicd-demo
+  tag: v1
+  pullPolicy: IfNotPresent
+
+replicaCount: 2
