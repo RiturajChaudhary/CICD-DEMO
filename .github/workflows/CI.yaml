@@ -22,10 +22,10 @@ env:
 jobs:
 
   # ============================================================
-  # CI + SECURITY
+  # 1. CODE QUALITY + SONARQUBE
   # ============================================================
-  ci:
-    name: CI + Security
+  sonar:
+    name: SonarQube Analysis + Quality Gate
     runs-on: ubuntu-latest
 
     steps:
@@ -35,73 +35,97 @@ jobs:
         with:
           fetch-depth: 0
 
-      # --------------------------------------------------------
-      # Node.js
-      # --------------------------------------------------------
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: pnpm
 
-      # --------------------------------------------------------
-      # pnpm
-      # --------------------------------------------------------
       - name: Enable Corepack
         run: corepack enable
 
       - name: Setup pnpm
         run: corepack prepare pnpm@11.5.1 --activate
 
-      # --------------------------------------------------------
-      # Install
-      # --------------------------------------------------------
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # --------------------------------------------------------
-      # Lint
-      # --------------------------------------------------------
       - name: Run lint
         run: pnpm lint
 
-      # --------------------------------------------------------
-      # Test
-      # --------------------------------------------------------
       - name: Run tests
         run: pnpm test -- --coverage
 
-      # --------------------------------------------------------
-      # OWASP Dependency Check
-      # --------------------------------------------------------
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v6
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.qualitygate.wait=true
+            -Dsonar.qualitygate.timeout=300
+
+
+  # ============================================================
+  # 2. OWASP DEPENDENCY CHECK
+  # ============================================================
+  owasp:
+    name: OWASP Dependency Check
+    needs: sonar
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Setup pnpm
+        run: corepack prepare pnpm@11.5.1 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: OWASP Dependency-Check
         uses: dependency-check/Dependency-Check_Action@main
         with:
           project: "cicd-demo"
           path: "."
           format: "ALL"
+          out: "reports"
           args: >
             --failOnCVSS 7
 
-      - name: Upload OWASP report
+      - name: Upload OWASP reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: dependency-check-report
           path: reports/
 
-      # --------------------------------------------------------
-      # SonarQube
-      # --------------------------------------------------------
-      - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@v6
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
-      # --------------------------------------------------------
-      # Docker Build
-      # --------------------------------------------------------
+  # ============================================================
+  # 3. DOCKER BUILD + TRIVY
+  # ============================================================
+  docker-build-scan:
+    name: Docker Build + Trivy
+    needs: owasp
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Build Docker image
         run: |
           docker build \
@@ -109,10 +133,10 @@ jobs:
             .
 
       # --------------------------------------------------------
-      # Trivy
+      # FIXED TRIVY ACTION VERSION
       # --------------------------------------------------------
       - name: Trivy vulnerability scan
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: "${{ env.DOCKER_IMAGE }}:${{ env.IMAGE_TAG }}"
           format: "table"
@@ -122,11 +146,11 @@ jobs:
 
 
   # ============================================================
-  # DOCKER PUSH
+  # 4. DOCKER PUSH
   # ============================================================
   docker-push:
     name: Docker Push
-    needs: ci
+    needs: docker-build-scan
 
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
@@ -137,9 +161,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # --------------------------------------------------------
-      # Docker Login
-      # --------------------------------------------------------
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
@@ -147,25 +168,19 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # --------------------------------------------------------
-      # Build image
-      # --------------------------------------------------------
       - name: Build Docker image
         run: |
           docker build \
             -t $DOCKER_IMAGE:$IMAGE_TAG \
             .
 
-      # --------------------------------------------------------
-      # Push image
-      # --------------------------------------------------------
       - name: Push Docker image
         run: |
           docker push $DOCKER_IMAGE:$IMAGE_TAG
 
 
   # ============================================================
-  # UPDATE HELM
+  # 5. UPDATE HELM
   # ============================================================
   helm-update:
     name: Update Helm
@@ -175,49 +190,31 @@ jobs:
 
     steps:
 
-      # --------------------------------------------------------
-      # Checkout using PAT
-      # --------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GH_PAT }}
           fetch-depth: 0
 
-      # --------------------------------------------------------
-      # Configure Git
-      # --------------------------------------------------------
       - name: Configure Git
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      # --------------------------------------------------------
-      # Update repository
-      # --------------------------------------------------------
       - name: Update Helm image repository
         run: |
           sed -i "s|repository:.*|repository: $DOCKER_IMAGE|" \
             helm-cicd/values.yaml
 
-      # --------------------------------------------------------
-      # Update image tag
-      # --------------------------------------------------------
       - name: Update Helm image tag
         run: |
           sed -i "s|tag:.*|tag: \"$IMAGE_TAG\"|" \
             helm-cicd/values.yaml
 
-      # --------------------------------------------------------
-      # Show changes
-      # --------------------------------------------------------
       - name: Show Helm values
         run: |
           cat helm-cicd/values.yaml
 
-      # --------------------------------------------------------
-      # Commit
-      # --------------------------------------------------------
       - name: Commit Helm update
         run: |
           git add helm-cicd/values.yaml
@@ -225,9 +222,6 @@ jobs:
           git diff --cached --quiet || \
           git commit -m "chore: update image to $IMAGE_TAG"
 
-      # --------------------------------------------------------
-      # Push using PAT
-      # --------------------------------------------------------
       - name: Push Helm update
         run: |
           git push origin HEAD:main
