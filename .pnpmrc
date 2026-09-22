@@ -1,0 +1,2 @@
+# Allow build scripts for native packages like @parcel/watcher
+node-linker=hoisted
