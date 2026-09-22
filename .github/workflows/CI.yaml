@@ -25,7 +25,7 @@ jobs:
   # 1. CODE QUALITY + SONARQUBE
   # ============================================================
   sonar:
-    name: SonarQube Analysis + Quality Gate
+    name: Build and Analyze
     runs-on: ubuntu-latest
 
     steps:
@@ -34,12 +34,12 @@ jobs:
       # Checkout
       # --------------------------------------------------------
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           fetch-depth: 0
 
       # --------------------------------------------------------
-      # Node.js
+      # Node.js 22
       # --------------------------------------------------------
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -61,7 +61,7 @@ jobs:
           pnpm --version
 
       # --------------------------------------------------------
-      # Dependencies
+      # Install dependencies
       # --------------------------------------------------------
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -73,23 +73,28 @@ jobs:
         run: pnpm lint
 
       # --------------------------------------------------------
-      # Tests
+      # Tests + Coverage
       # --------------------------------------------------------
       - name: Run tests
-        run: pnpm test
+        run: pnpm test -- --coverage
 
       # --------------------------------------------------------
-      # SonarQube
+      # SonarQube Scan
       # --------------------------------------------------------
       - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@v6
+        uses: SonarSource/sonarqube-scan-action@7006c4492b2e0ee0f816d36501671557c97f5995
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        with:
-          args: >
-            -Dsonar.qualitygate.wait=true
-            -Dsonar.qualitygate.timeout=300
+
+      # --------------------------------------------------------
+      # SonarQube Quality Gate
+      # --------------------------------------------------------
+      - name: SonarQube Quality Gate
+        uses: SonarSource/sonarqube-quality-gate-action@cf038b0e0cdecfa9e56c198bbb7d21d751d62c3b
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
 
   # ============================================================
@@ -131,7 +136,7 @@ jobs:
           pnpm --version
 
       # --------------------------------------------------------
-      # Dependencies
+      # Install dependencies
       # --------------------------------------------------------
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -150,7 +155,7 @@ jobs:
             --failOnCVSS 7
 
       # --------------------------------------------------------
-      # Upload OWASP Reports
+      # Upload OWASP reports
       # --------------------------------------------------------
       - name: Upload OWASP reports
         if: always()
@@ -186,10 +191,10 @@ jobs:
             .
 
       # --------------------------------------------------------
-      # Trivy Vulnerability Scan
+      # Trivy
       # --------------------------------------------------------
       - name: Trivy vulnerability scan
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@0.28.0
         with:
           image-ref: "${{ env.DOCKER_IMAGE }}:${{ env.IMAGE_TAG }}"
           format: "table"
@@ -218,7 +223,7 @@ jobs:
         uses: actions/checkout@v4
 
       # --------------------------------------------------------
-      # Docker Hub Login
+      # Login to Docker Hub
       # --------------------------------------------------------
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -228,7 +233,7 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       # --------------------------------------------------------
-      # Build Docker image
+      # Build
       # --------------------------------------------------------
       - name: Build Docker image
         run: |
@@ -237,7 +242,7 @@ jobs:
             .
 
       # --------------------------------------------------------
-      # Push immutable SHA image
+      # Push SHA image
       # --------------------------------------------------------
       - name: Push Docker image
         run: |
@@ -273,7 +278,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       # --------------------------------------------------------
-      # Update Helm image repository
+      # Update Helm repository
       # --------------------------------------------------------
       - name: Update Helm image repository
         run: |
@@ -281,7 +286,7 @@ jobs:
             helm-cicd/values.yaml
 
       # --------------------------------------------------------
-      # Update Helm image tag
+      # Update Helm tag
       # --------------------------------------------------------
       - name: Update Helm image tag
         run: |
@@ -289,7 +294,7 @@ jobs:
             helm-cicd/values.yaml
 
       # --------------------------------------------------------
-      # Display Helm values
+      # Show Helm values
       # --------------------------------------------------------
       - name: Show Helm values
         run: |
