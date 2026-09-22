@@ -82,7 +82,7 @@ jobs:
       # Tests + Coverage
       # --------------------------------------------------------
       - name: Run tests
-        run: pnpm test -- --coverage
+        run: pnpm test --coverage
 
       # --------------------------------------------------------
       # SonarQube Scan
