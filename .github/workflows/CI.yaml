@@ -25,18 +25,29 @@ jobs:
   # 1. CODE QUALITY + SONARQUBE
   # ============================================================
   sonar:
-    name: Build and Analyze
+    name: Build, Test and SonarQube
     runs-on: ubuntu-latest
 
     steps:
-
       # --------------------------------------------------------
       # Checkout
       # --------------------------------------------------------
       - name: Checkout repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      # --------------------------------------------------------
+      # Enable Corepack
+      # --------------------------------------------------------
+      - name: Enable Corepack
+        run: corepack enable
+
+      # --------------------------------------------------------
+      # Setup pnpm (must happen before setup-node's pnpm cache step)
+      # --------------------------------------------------------
+      - name: Setup pnpm
+        run: corepack prepare pnpm@11.5.1 --activate
 
       # --------------------------------------------------------
       # Node.js 22
@@ -45,16 +56,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+          cache: "pnpm"
 
       # --------------------------------------------------------
-      # pnpm
+      # Verify versions
       # --------------------------------------------------------
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Setup pnpm
-        run: corepack prepare pnpm@11.5.1 --activate
-
       - name: Verify Node.js and pnpm
         run: |
           node --version
@@ -82,7 +88,7 @@ jobs:
       # SonarQube Scan
       # --------------------------------------------------------
       - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@7006c4492b2e0ee0f816d36501671557c97f5995
+        uses: SonarSource/sonarqube-scan-action@v6
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
@@ -91,22 +97,20 @@ jobs:
       # SonarQube Quality Gate
       # --------------------------------------------------------
       - name: SonarQube Quality Gate
-        uses: SonarSource/sonarqube-quality-gate-action@cf038b0e0cdecfa9e56c198bbb7d21d751d62c3b
+        uses: SonarSource/sonarqube-quality-gate-action@v1
         timeout-minutes: 5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-
   # ============================================================
-  # 2. OWASP DEPENDENCY CHECK
+  # 2. DEPENDENCY SECURITY
   # ============================================================
-  owasp:
-    name: OWASP Dependency Check
+  security:
+    name: Dependency Security Scan
     needs: sonar
     runs-on: ubuntu-latest
 
     steps:
-
       # --------------------------------------------------------
       # Checkout
       # --------------------------------------------------------
@@ -114,26 +118,25 @@ jobs:
         uses: actions/checkout@v4
 
       # --------------------------------------------------------
-      # Node.js
+      # Enable Corepack
+      # --------------------------------------------------------
+      - name: Enable Corepack
+        run: corepack enable
+
+      # --------------------------------------------------------
+      # Setup pnpm (must happen before setup-node's pnpm cache step)
+      # --------------------------------------------------------
+      - name: Setup pnpm
+        run: corepack prepare pnpm@11.5.1 --activate
+
+      # --------------------------------------------------------
+      # Node.js 22
       # --------------------------------------------------------
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-
-      # --------------------------------------------------------
-      # pnpm
-      # --------------------------------------------------------
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Setup pnpm
-        run: corepack prepare pnpm@11.5.1 --activate
-
-      - name: Verify Node.js and pnpm
-        run: |
-          node --version
-          pnpm --version
+          cache: "pnpm"
 
       # --------------------------------------------------------
       # Install dependencies
@@ -142,7 +145,13 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # --------------------------------------------------------
-      # OWASP Dependency Check
+      # pnpm Audit
+      # --------------------------------------------------------
+      - name: pnpm Security Audit
+        run: pnpm audit --audit-level=high
+
+      # --------------------------------------------------------
+      # OWASP Dependency-Check
       # --------------------------------------------------------
       - name: OWASP Dependency-Check
         uses: dependency-check/Dependency-Check_Action@main
@@ -153,6 +162,7 @@ jobs:
           out: "reports"
           args: >
             --failOnCVSS 7
+            --enableRetired
 
       # --------------------------------------------------------
       # Upload OWASP reports
@@ -164,17 +174,15 @@ jobs:
           name: dependency-check-report
           path: reports/
 
-
   # ============================================================
   # 3. DOCKER BUILD + TRIVY
   # ============================================================
-  docker-build-scan:
+  docker:
     name: Docker Build + Trivy
-    needs: owasp
+    needs: security
     runs-on: ubuntu-latest
 
     steps:
-
       # --------------------------------------------------------
       # Checkout
       # --------------------------------------------------------
@@ -182,7 +190,7 @@ jobs:
         uses: actions/checkout@v4
 
       # --------------------------------------------------------
-      # Docker Build
+      # Build Docker image
       # --------------------------------------------------------
       - name: Build Docker image
         run: |
@@ -191,7 +199,14 @@ jobs:
             .
 
       # --------------------------------------------------------
-      # Trivy
+      # Show image
+      # --------------------------------------------------------
+      - name: Show Docker image
+        run: |
+          docker images "$DOCKER_IMAGE"
+
+      # --------------------------------------------------------
+      # Trivy vulnerability scan
       # --------------------------------------------------------
       - name: Trivy vulnerability scan
         uses: aquasecurity/trivy-action@0.28.0
@@ -202,20 +217,16 @@ jobs:
           exit-code: "1"
           ignore-unfixed: true
 
-
   # ============================================================
   # 4. DOCKER PUSH
   # ============================================================
   docker-push:
-    name: Docker Push
-    needs: docker-build-scan
-
+    name: Push Docker Image
+    needs: docker
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-
     runs-on: ubuntu-latest
 
     steps:
-
       # --------------------------------------------------------
       # Checkout
       # --------------------------------------------------------
@@ -233,7 +244,7 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       # --------------------------------------------------------
-      # Build
+      # Build image again
       # --------------------------------------------------------
       - name: Build Docker image
         run: |
@@ -242,24 +253,21 @@ jobs:
             .
 
       # --------------------------------------------------------
-      # Push SHA image
+      # Push immutable SHA image
       # --------------------------------------------------------
       - name: Push Docker image
         run: |
           docker push "$DOCKER_IMAGE:$IMAGE_TAG"
 
-
   # ============================================================
   # 5. UPDATE HELM
   # ============================================================
   helm-update:
-    name: Update Helm
+    name: Update Helm Image
     needs: docker-push
-
     runs-on: ubuntu-latest
 
     steps:
-
       # --------------------------------------------------------
       # Checkout using PAT
       # --------------------------------------------------------
@@ -278,7 +286,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       # --------------------------------------------------------
-      # Update Helm repository
+      # Update image repository
       # --------------------------------------------------------
       - name: Update Helm image repository
         run: |
@@ -286,7 +294,7 @@ jobs:
             helm-cicd/values.yaml
 
       # --------------------------------------------------------
-      # Update Helm tag
+      # Update image tag
       # --------------------------------------------------------
       - name: Update Helm image tag
         run: |
@@ -294,7 +302,7 @@ jobs:
             helm-cicd/values.yaml
 
       # --------------------------------------------------------
-      # Show Helm values
+      # Validate Helm values
       # --------------------------------------------------------
       - name: Show Helm values
         run: |
