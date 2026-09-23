@@ -29,34 +29,28 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # --------------------------------------------------------
-      # Checkout
-      # --------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       # --------------------------------------------------------
-      # Enable Corepack
-      # --------------------------------------------------------
-      - name: Enable Corepack
-        run: corepack enable
-
-      # --------------------------------------------------------
-      # Setup pnpm (must happen before setup-node's pnpm cache step)
-      # --------------------------------------------------------
-      - name: Setup pnpm
-        run: corepack prepare pnpm@11.5.1 --activate
-
-      # --------------------------------------------------------
-      # Node.js 22
+      # Node.js 24
       # --------------------------------------------------------
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "24"
           cache: "pnpm"
+
+      # --------------------------------------------------------
+      # Setup pnpm 11
+      # --------------------------------------------------------
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: "11.5.1"
+          run_install: false
 
       # --------------------------------------------------------
       # Verify versions
@@ -102,6 +96,7 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
+
   # ============================================================
   # 2. DEPENDENCY SECURITY
   # ============================================================
@@ -111,32 +106,26 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # --------------------------------------------------------
-      # Checkout
-      # --------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
       # --------------------------------------------------------
-      # Enable Corepack
-      # --------------------------------------------------------
-      - name: Enable Corepack
-        run: corepack enable
-
-      # --------------------------------------------------------
-      # Setup pnpm (must happen before setup-node's pnpm cache step)
-      # --------------------------------------------------------
-      - name: Setup pnpm
-        run: corepack prepare pnpm@11.5.1 --activate
-
-      # --------------------------------------------------------
-      # Node.js 22
+      # Node.js 24
       # --------------------------------------------------------
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "24"
           cache: "pnpm"
+
+      # --------------------------------------------------------
+      # Setup pnpm 11
+      # --------------------------------------------------------
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: "11.5.1"
+          run_install: false
 
       # --------------------------------------------------------
       # Install dependencies
@@ -174,6 +163,7 @@ jobs:
           name: dependency-check-report
           path: reports/
 
+
   # ============================================================
   # 3. DOCKER BUILD + TRIVY
   # ============================================================
@@ -183,9 +173,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # --------------------------------------------------------
-      # Checkout
-      # --------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -217,6 +204,7 @@ jobs:
           exit-code: "1"
           ignore-unfixed: true
 
+
   # ============================================================
   # 4. DOCKER PUSH
   # ============================================================
@@ -227,9 +215,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # --------------------------------------------------------
-      # Checkout
-      # --------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -259,6 +244,7 @@ jobs:
         run: |
           docker push "$DOCKER_IMAGE:$IMAGE_TAG"
 
+
   # ============================================================
   # 5. UPDATE HELM
   # ============================================================
@@ -268,10 +254,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # --------------------------------------------------------
-      # Checkout using PAT
-      # --------------------------------------------------------
-      - name: Checkout repository
+      - name: Checkout using PAT
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GH_PAT }}
