@@ -4,3 +4,12 @@ node_modules
 .gitignore
 npm-debug.log*
 pnpm-debug.log*
+coverage
+reports
+.github
+helm-cicd
+__tests__
+jest.config.js
+jest.setup.js
+sonar-project.properties
+package copy.json

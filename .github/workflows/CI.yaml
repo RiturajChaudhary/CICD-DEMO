@@ -63,7 +63,7 @@ jobs:
       # Install dependencies
       # --------------------------------------------------------
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile --no-ignored-builds
+        run: pnpm install --frozen-lockfile
 
       # --------------------------------------------------------
       # Lint
@@ -94,6 +94,7 @@ jobs:
         timeout-minutes: 5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
 
   # ============================================================
@@ -129,7 +130,7 @@ jobs:
       # Install dependencies
       # --------------------------------------------------------
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile --no-ignored-builds
+        run: pnpm install --frozen-lockfile
 
       # --------------------------------------------------------
       # pnpm Audit
