@@ -129,7 +129,7 @@ jobs:
       # Install dependencies
       # --------------------------------------------------------
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --no-ignored-builds
 
       # --------------------------------------------------------
       # pnpm Audit
