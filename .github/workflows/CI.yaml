@@ -1,3 +1,4 @@
+```yaml
 name: CI/CD Pipeline
 
 on:
@@ -15,6 +16,9 @@ on:
       - "helm-cicd/**"
       - "README.md"
 
+permissions:
+  contents: write
+
 env:
   DOCKER_IMAGE: docker.io/${{ secrets.DOCKER_USERNAME }}/cicd-demo
   IMAGE_TAG: ${{ github.sha }}
@@ -30,19 +34,24 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      # Setup pnpm (Latest v4)
+      # --------------------------------------------------------
+      # Setup pnpm
+      # --------------------------------------------------------
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
+          version: 12.5.1
           run_install: false
 
-      # Setup Node.js (Latest v4)
+      # --------------------------------------------------------
+      # Setup Node.js
+      # --------------------------------------------------------
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "24"
           cache: "pnpm"
@@ -52,25 +61,38 @@ jobs:
           node --version
           pnpm --version
 
+      # --------------------------------------------------------
+      # Install dependencies
+      # --------------------------------------------------------
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # --------------------------------------------------------
+      # Lint
+      # --------------------------------------------------------
       - name: Run lint
         run: pnpm lint
 
+      # --------------------------------------------------------
+      # Tests + Coverage
+      # --------------------------------------------------------
       - name: Run tests
         run: pnpm test --coverage
 
-      # SonarQube Scan (Latest v6)
+      # --------------------------------------------------------
+      # SonarQube Scan
+      # --------------------------------------------------------
       - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@v6.0.0
+        uses: SonarSource/sonarqube-scan-action@v8.2.1
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
-      # SonarQube Quality Gate (Latest v1)
+      # --------------------------------------------------------
+      # SonarQube Quality Gate
+      # --------------------------------------------------------
       - name: SonarQube Quality Gate
-        uses: SonarSource/sonarqube-quality-gate-action@v1.1.0
+        uses: SonarSource/sonarqube-quality-gate-action@v1.2.0
         timeout-minutes: 5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -87,15 +109,16 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
+          version: 12.5.1
           run_install: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "24"
           cache: "pnpm"
@@ -103,19 +126,23 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Create Reports Directory
+      - name: Create reports directory
         run: mkdir -p reports
 
-      # pnpm Audit (Save Report & Allow Flow to Continue)
+      # --------------------------------------------------------
+      # pnpm Audit
+      # --------------------------------------------------------
       - name: pnpm Security Audit
         continue-on-error: true
         run: |
           pnpm audit --audit-level=high --json > reports/pnpm-audit.json || true
           pnpm audit --audit-level=high > reports/pnpm-audit.txt || true
 
-      # OWASP Dependency-Check (Pinned Tag v1.2.1)
+      # --------------------------------------------------------
+      # OWASP Dependency-Check
+      # --------------------------------------------------------
       - name: OWASP Dependency-Check
-        uses: dependency-check/Dependency-Check_Action@v1.2.1
+        uses: dependency-check/Dependency-Check_Action@main
         continue-on-error: true
         with:
           project: "cicd-demo"
@@ -125,12 +152,14 @@ jobs:
           args: >
             --enableRetired
 
-      # Upload All Generated Reports
+      # --------------------------------------------------------
+      # Upload reports
+      # --------------------------------------------------------
       - name: Upload Security Reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: dependency-check-report
+          name: dependency-security-reports
           path: reports/
           if-no-files-found: warn
           retention-days: 14
@@ -146,25 +175,30 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # --------------------------------------------------------
+      # Build Docker image locally
+      # --------------------------------------------------------
       - name: Build Docker image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7.4.0
         with:
           context: .
           load: true
           tags: ${{ env.DOCKER_IMAGE }}:${{ env.IMAGE_TAG }}
 
+      # --------------------------------------------------------
       # Trivy vulnerability scan
+      # --------------------------------------------------------
       - name: Trivy vulnerability scan
-        uses: aquasecurity/trivy-action@v0.30.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: "${{ env.DOCKER_IMAGE }}:${{ env.IMAGE_TAG }}"
-          format: "table"
-          severity: "CRITICAL,HIGH"
+          image-ref: ${{ env.DOCKER_IMAGE }}:${{ env.IMAGE_TAG }}
+          format: table
+          severity: CRITICAL,HIGH
           exit-code: "1"
           ignore-unfixed: true
 
@@ -175,29 +209,40 @@ jobs:
   docker-push:
     name: Push Docker Image
     needs: docker
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    if: >
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main'
+
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # --------------------------------------------------------
+      # Docker Hub login
+      # --------------------------------------------------------
       - name: Login to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4.6.0
         with:
           registry: docker.io
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
+      # --------------------------------------------------------
+      # Build + Push immutable SHA image
+      # --------------------------------------------------------
       - name: Build and Push Docker image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7.4.0
         with:
           context: .
           push: true
-          tags: ${{ env.DOCKER_IMAGE }}:${{ env.IMAGE_TAG }}
+          tags: |
+            ${{ env.DOCKER_IMAGE }}:${{ env.IMAGE_TAG }}
 
 
   # ============================================================
@@ -206,40 +251,64 @@ jobs:
   helm-update:
     name: Update Helm Image
     needs: docker-push
+
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout using PAT
-        uses: actions/checkout@v4
+      # --------------------------------------------------------
+      # Checkout using PAT
+      # --------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v7
         with:
           token: ${{ secrets.GH_PAT }}
           fetch-depth: 0
 
+      # --------------------------------------------------------
+      # Configure Git
+      # --------------------------------------------------------
       - name: Configure Git
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+      # --------------------------------------------------------
+      # Update image repository
+      # --------------------------------------------------------
       - name: Update Helm image repository
         run: |
           sed -i "s|repository:.*|repository: $DOCKER_IMAGE|" \
             helm-cicd/values.yaml
 
+      # --------------------------------------------------------
+      # Update immutable image tag
+      # --------------------------------------------------------
       - name: Update Helm image tag
         run: |
           sed -i "s|tag:.*|tag: \"$IMAGE_TAG\"|" \
             helm-cicd/values.yaml
 
+      # --------------------------------------------------------
+      # Validate values
+      # --------------------------------------------------------
       - name: Validate Helm values
         run: |
           cat helm-cicd/values.yaml
 
+      # --------------------------------------------------------
+      # Commit
+      # --------------------------------------------------------
       - name: Commit Helm update
         run: |
           git add helm-cicd/values.yaml
-          git diff --cached --quiet || \
-          git commit -m "chore: update image to $IMAGE_TAG"
 
+          git diff --cached --quiet || \
+            git commit -m "chore: update image to $IMAGE_TAG"
+
+      # --------------------------------------------------------
+      # Push
+      # --------------------------------------------------------
       - name: Push Helm update
         run: |
           git push origin HEAD:main
+```
