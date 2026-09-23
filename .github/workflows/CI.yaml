@@ -32,70 +32,44 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # --------------------------------------------------------
-      # Checkout
-      # --------------------------------------------------------
+
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      # --------------------------------------------------------
-      # Setup pnpm
-      # --------------------------------------------------------
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
         with:
           version: 12.5.1
           run_install: false
 
-      # --------------------------------------------------------
-      # Setup Node.js
-      # --------------------------------------------------------
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
           node-version: "24"
           cache: "pnpm"
 
-      # --------------------------------------------------------
-      # Verify versions
-      # --------------------------------------------------------
       - name: Verify Node.js and pnpm
         run: |
           node --version
           pnpm --version
 
-      # --------------------------------------------------------
-      # Install dependencies
-      # --------------------------------------------------------
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # --------------------------------------------------------
-      # Lint
-      # --------------------------------------------------------
       - name: Run lint
         run: pnpm lint
 
-      # --------------------------------------------------------
-      # Tests + Coverage
-      # --------------------------------------------------------
       - name: Run tests
         run: pnpm test --coverage
 
-      # --------------------------------------------------------
-      # SonarQube Scan
-      # --------------------------------------------------------
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@v8.2.1
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
-      # --------------------------------------------------------
-      # SonarQube Quality Gate
-      # --------------------------------------------------------
       - name: SonarQube Quality Gate
         uses: SonarSource/sonarqube-quality-gate-action@v1.2.0
         timeout-minutes: 5
@@ -113,39 +87,25 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # --------------------------------------------------------
-      # Checkout
-      # --------------------------------------------------------
+
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      # --------------------------------------------------------
-      # Setup pnpm
-      # --------------------------------------------------------
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
         with:
           version: 12.5.1
           run_install: false
 
-      # --------------------------------------------------------
-      # Setup Node.js
-      # --------------------------------------------------------
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
           node-version: "24"
           cache: "pnpm"
 
-      # --------------------------------------------------------
-      # Install dependencies
-      # --------------------------------------------------------
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # --------------------------------------------------------
-      # Create reports directory
-      # --------------------------------------------------------
       - name: Create reports directory
         run: mkdir -p reports
 
@@ -172,9 +132,9 @@ jobs:
           args: >
             --enableRetired
 
-      # --------------------------------------------------------
-      # Upload security reports
-      # --------------------------------------------------------
+      # ========================================================
+      # UPLOAD SECURITY REPORTS
+      # ========================================================
       - name: Upload Security Reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -194,15 +154,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # --------------------------------------------------------
-      # Checkout
-      # --------------------------------------------------------
+
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      # --------------------------------------------------------
-      # Docker Buildx
-      # --------------------------------------------------------
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -220,6 +175,8 @@ jobs:
       # TRIVY TABLE REPORT
       # ========================================================
       - name: Generate Trivy Table Report
+        id: trivy-table
+        continue-on-error: true
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ env.DOCKER_IMAGE }}:${{ env.IMAGE_TAG }}
@@ -233,6 +190,8 @@ jobs:
       # TRIVY HTML REPORT
       # ========================================================
       - name: Generate Trivy HTML Report
+        id: trivy-html
+        continue-on-error: true
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ env.DOCKER_IMAGE }}:${{ env.IMAGE_TAG }}
@@ -244,15 +203,17 @@ jobs:
           ignore-unfixed: true
 
       # ========================================================
-      # SHOW TRIVY REPORT IN GITHUB SUMMARY
+      # PUBLISH TRIVY REPORT TO GITHUB SUMMARY
       # ========================================================
       - name: Publish Trivy Report to GitHub Summary
         if: always()
         run: |
           echo "## 🔐 Trivy Container Security Report" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
+
           echo "**Image:** \`${{ env.DOCKER_IMAGE }}:${{ env.IMAGE_TAG }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
+
           echo "**Severity:** CRITICAL, HIGH, MEDIUM" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
 
@@ -261,7 +222,7 @@ jobs:
             cat trivy-report.txt >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "Trivy report was not generated." >> "$GITHUB_STEP_SUMMARY"
+            echo "Trivy table report was not generated." >> "$GITHUB_STEP_SUMMARY"
           fi
 
       # ========================================================
@@ -293,15 +254,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # --------------------------------------------------------
-      # Checkout
-      # --------------------------------------------------------
+
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      # --------------------------------------------------------
-      # Docker Buildx
-      # --------------------------------------------------------
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -316,7 +272,7 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       # ========================================================
-      # BUILD + PUSH IMMUTABLE IMAGE
+      # BUILD + PUSH IMMUTABLE SHA IMAGE
       # ========================================================
       - name: Build and Push Docker image
         uses: docker/build-push-action@v7.4.0
@@ -336,18 +292,19 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # --------------------------------------------------------
-      # Checkout using PAT
-      # --------------------------------------------------------
+
+      # ========================================================
+      # CHECKOUT USING PAT
+      # ========================================================
       - name: Checkout using GitHub PAT
         uses: actions/checkout@v7
         with:
           token: ${{ secrets.GH_PAT }}
           fetch-depth: 0
 
-      # --------------------------------------------------------
-      # Configure Git
-      # --------------------------------------------------------
+      # ========================================================
+      # CONFIGURE GIT
+      # ========================================================
       - name: Configure Git
         run: |
           git config user.name "github-actions[bot]"
