@@ -62,6 +62,11 @@ jobs:
       # --------------------------------------------------------
       # Install dependencies
       # --------------------------------------------------------
+      - name: Allow built dependencies
+        run: |
+          pnpm config set onlyBuiltDependencies "@parcel/watcher,unrs-resolver"
+          pnpm config set ignore-builds false
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -128,8 +133,13 @@ jobs:
       # --------------------------------------------------------
       # Install dependencies
       # --------------------------------------------------------
+      - name: Allow built dependencies
+        run: |
+          pnpm config set onlyBuiltDependencies "@parcel/watcher,unrs-resolver"
+          pnpm config set ignore-builds false
+
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile --no-ignored-builds
+        run: pnpm install --frozen-lockfile
 
       # --------------------------------------------------------
       # pnpm Audit
