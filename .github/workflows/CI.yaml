@@ -32,6 +32,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # --------------------------------------------------------
+      # Checkout
+      # --------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
@@ -55,6 +58,9 @@ jobs:
           node-version: "24"
           cache: "pnpm"
 
+      # --------------------------------------------------------
+      # Verify versions
+      # --------------------------------------------------------
       - name: Verify Node.js and pnpm
         run: |
           node --version
@@ -107,39 +113,54 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # --------------------------------------------------------
+      # Checkout
+      # --------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v7
 
+      # --------------------------------------------------------
+      # Setup pnpm
+      # --------------------------------------------------------
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
         with:
           version: 12.5.1
           run_install: false
 
+      # --------------------------------------------------------
+      # Setup Node.js
+      # --------------------------------------------------------
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
           node-version: "24"
           cache: "pnpm"
 
+      # --------------------------------------------------------
+      # Install dependencies
+      # --------------------------------------------------------
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # --------------------------------------------------------
+      # Create reports directory
+      # --------------------------------------------------------
       - name: Create reports directory
         run: mkdir -p reports
 
-      # --------------------------------------------------------
-      # pnpm Audit
-      # --------------------------------------------------------
+      # ========================================================
+      # PNPM AUDIT
+      # ========================================================
       - name: pnpm Security Audit
         continue-on-error: true
         run: |
           pnpm audit --audit-level=high --json > reports/pnpm-audit.json || true
           pnpm audit --audit-level=high > reports/pnpm-audit.txt || true
 
-      # --------------------------------------------------------
-      # OWASP Dependency-Check
-      # --------------------------------------------------------
+      # ========================================================
+      # OWASP DEPENDENCY-CHECK
+      # ========================================================
       - name: OWASP Dependency-Check
         uses: dependency-check/Dependency-Check_Action@main
         continue-on-error: true
@@ -152,7 +173,7 @@ jobs:
             --enableRetired
 
       # --------------------------------------------------------
-      # Upload reports
+      # Upload security reports
       # --------------------------------------------------------
       - name: Upload Security Reports
         if: always()
@@ -173,15 +194,21 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # --------------------------------------------------------
+      # Checkout
+      # --------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v7
 
+      # --------------------------------------------------------
+      # Docker Buildx
+      # --------------------------------------------------------
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # --------------------------------------------------------
-      # Build Docker image locally
-      # --------------------------------------------------------
+      # ========================================================
+      # BUILD DOCKER IMAGE
+      # ========================================================
       - name: Build Docker image
         uses: docker/build-push-action@v7.4.0
         with:
@@ -189,52 +216,65 @@ jobs:
           load: true
           tags: ${{ env.DOCKER_IMAGE }}:${{ env.IMAGE_TAG }}
 
-      # --------------------------------------------------------
-      # Trivy HTML Report Generation
-      # --------------------------------------------------------
+      # ========================================================
+      # TRIVY TABLE REPORT
+      # ========================================================
+      - name: Generate Trivy Table Report
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.DOCKER_IMAGE }}:${{ env.IMAGE_TAG }}
+          format: "table"
+          output: "trivy-report.txt"
+          severity: "CRITICAL,HIGH,MEDIUM"
+          exit-code: "0"
+          ignore-unfixed: true
+
+      # ========================================================
+      # TRIVY HTML REPORT
+      # ========================================================
       - name: Generate Trivy HTML Report
         uses: aquasecurity/trivy-action@v0.36.0
-        continue-on-error: true
         with:
           image-ref: ${{ env.DOCKER_IMAGE }}:${{ env.IMAGE_TAG }}
-          format: 'template'
-          template: '@contrib/html.tpl'
-          output: 'trivy-report.html'
-          severity: 'CRITICAL,HIGH'
-          exit-code: '0'
+          format: "template"
+          template: "@contrib/html.tpl"
+          output: "trivy-report.html"
+          severity: "CRITICAL,HIGH,MEDIUM"
+          exit-code: "0"
           ignore-unfixed: true
 
-      # --------------------------------------------------------
-      # Trivy GitHub Summary Generation
-      # --------------------------------------------------------
-      - name: Generate Trivy GitHub Summary
-        uses: aquasecurity/trivy-action@v0.36.0
-        continue-on-error: true
-        with:
-          image-ref: ${{ env.DOCKER_IMAGE }}:${{ env.IMAGE_TAG }}
-          format: 'template'
-          template: '%/public/github-summary.tpl'
-          output: 'trivy-summary.md'
-          severity: 'CRITICAL,HIGH'
-          exit-code: '0'
-          ignore-unfixed: true
-
-      # --------------------------------------------------------
-      # Publish to Job Summary & Upload HTML Artifact
-      # --------------------------------------------------------
-      - name: Publish Trivy Summary to GitHub Actions
+      # ========================================================
+      # SHOW TRIVY REPORT IN GITHUB SUMMARY
+      # ========================================================
+      - name: Publish Trivy Report to GitHub Summary
         if: always()
         run: |
-          if [ -f trivy-summary.md ]; then
-            cat trivy-summary.md >> $GITHUB_STEP_SUMMARY
+          echo "## 🔐 Trivy Container Security Report" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Image:** \`${{ env.DOCKER_IMAGE }}:${{ env.IMAGE_TAG }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Severity:** CRITICAL, HIGH, MEDIUM" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -f trivy-report.txt ]; then
+            echo '```text' >> "$GITHUB_STEP_SUMMARY"
+            cat trivy-report.txt >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Trivy report was not generated." >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Upload Trivy HTML Report Artifact
+      # ========================================================
+      # UPLOAD TRIVY REPORTS
+      # ========================================================
+      - name: Upload Trivy Security Reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: trivy-html-report
-          path: trivy-report.html
+          name: trivy-security-reports
+          path: |
+            trivy-report.txt
+            trivy-report.html
           if-no-files-found: warn
           retention-days: 14
 
@@ -253,15 +293,21 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # --------------------------------------------------------
+      # Checkout
+      # --------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v7
 
+      # --------------------------------------------------------
+      # Docker Buildx
+      # --------------------------------------------------------
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # --------------------------------------------------------
-      # Docker Hub login
-      # --------------------------------------------------------
+      # ========================================================
+      # DOCKER HUB LOGIN
+      # ========================================================
       - name: Login to Docker Hub
         uses: docker/login-action@v4.6.0
         with:
@@ -269,9 +315,9 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # --------------------------------------------------------
-      # Build + Push immutable SHA image
-      # --------------------------------------------------------
+      # ========================================================
+      # BUILD + PUSH IMMUTABLE IMAGE
+      # ========================================================
       - name: Build and Push Docker image
         uses: docker/build-push-action@v7.4.0
         with:
@@ -287,14 +333,13 @@ jobs:
   helm-update:
     name: Update Helm Image
     needs: docker-push
-
     runs-on: ubuntu-latest
 
     steps:
       # --------------------------------------------------------
       # Checkout using PAT
       # --------------------------------------------------------
-      - name: Checkout repository
+      - name: Checkout using GitHub PAT
         uses: actions/checkout@v7
         with:
           token: ${{ secrets.GH_PAT }}
@@ -308,42 +353,46 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      # --------------------------------------------------------
-      # Update image repository
-      # --------------------------------------------------------
+      # ========================================================
+      # UPDATE IMAGE REPOSITORY
+      # ========================================================
       - name: Update Helm image repository
         run: |
           sed -i "s|repository:.*|repository: $DOCKER_IMAGE|" \
             helm-cicd/values.yaml
 
-      # --------------------------------------------------------
-      # Update immutable image tag
-      # --------------------------------------------------------
+      # ========================================================
+      # UPDATE IMAGE TAG
+      # ========================================================
       - name: Update Helm image tag
         run: |
           sed -i "s|tag:.*|tag: \"$IMAGE_TAG\"|" \
             helm-cicd/values.yaml
 
-      # --------------------------------------------------------
-      # Validate values
-      # --------------------------------------------------------
+      # ========================================================
+      # VALIDATE HELM VALUES
+      # ========================================================
       - name: Validate Helm values
         run: |
+          echo "Updated Helm values:"
           cat helm-cicd/values.yaml
 
-      # --------------------------------------------------------
-      # Commit
-      # --------------------------------------------------------
+      # ========================================================
+      # COMMIT HELM UPDATE
+      # ========================================================
       - name: Commit Helm update
         run: |
           git add helm-cicd/values.yaml
 
-          git diff --cached --quiet || \
+          if git diff --cached --quiet; then
+            echo "No Helm changes to commit."
+          else
             git commit -m "chore: update image to $IMAGE_TAG"
+          fi
 
-      # --------------------------------------------------------
-      # Push
-      # --------------------------------------------------------
+      # ========================================================
+      # PUSH HELM UPDATE
+      # ========================================================
       - name: Push Helm update
         run: |
           git push origin HEAD:main
