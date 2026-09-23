@@ -3,8 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@11.0.0",
-
+  "packageManager": "pnpm@11.5.1",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -12,16 +11,18 @@
     "lint": "eslint .",
     "test": "jest"
   },
-
   "dependencies": {
     "next": "16.3.5",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
-
   "devDependencies": {
     "@testing-library/jest-dom": "6.10.0",
     "eslint": "9.39.5",
     "jest": "30.5.2"
-  }
+  },
+  "onlyBuiltDependencies": [
+    "@parcel/watcher",
+    "unrs-resolver"
+  ]
 }
